@@ -1,0 +1,61 @@
+{
+  "name": "releaseforge",
+  "version": "0.1.0",
+  "description": "Automate the npm release chain - semver plan, gate checks, tag, GitHub Release assets - zero dependencies",
+  "type": "module",
+  "bin": {
+    "releaseforge": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "precoverage": "npm run build",
+    "coverage": "vitest run --coverage",
+    "dev": "npm run build && node dist/cli.js",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "release",
+    "semver",
+    "changelog",
+    "conventional-commits",
+    "github-release",
+    "ci",
+    "cli",
+    "devops"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kesheC/releaseforge.git"
+  },
+  "author": "kesheC",
+  "bugs": {
+    "url": "https://github.com/kesheC/releaseforge/issues"
+  },
+  "homepage": "https://github.com/kesheC/releaseforge#readme",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^4.1.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}

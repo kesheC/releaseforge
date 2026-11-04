@@ -1,0 +1,44 @@
+import { execFileSync } from "node:child_process";
+import { platform } from "node:os";
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+/**
+ * npm pack integration: run it, find the tarball, hash it. The CLI never
+ * publishes to the registry itself - publishing means attaching the tarball
+ * to a GitHub Release, which the release command does.
+ */
+
+export interface PackResult {
+  /** Absolute path to the generated tarball. */
+  tarballPath: string;
+  /** Base name, e.g. releaseforge-0.2.0.tgz */
+  tarball: string;
+  /** Size in bytes. */
+  bytes: number;
+  /** sha256 hex digest. */
+  sha256: string;
+}
+
+/** Run npm pack --pack-destination <dest> and return the tarball info. */
+export function runPack(root: string, dest: string): PackResult {
+  const out = execFileSync("npm", ["pack", "--pack-destination", dest], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+    // Windows spawns npm through npm.cmd, which execFileSync cannot launch
+    // without a shell. POSIX is fine without one.
+    shell: platform() === "win32",
+    // npm notice lines go to stderr but pollute merged streams; a CLI whose
+    // stdout is a transcript should not emit decoration around the answer.
+    env: { ...process.env, npm_config_loglevel: "error" },
+  });
+  // npm prints the tarball file name on the last non-empty line.
+  const lines = out.split(/\r?\n/).filter((l) => l.trim() !== "");
+  const name = lines[lines.length - 1]!.trim();
+  const tarballPath = join(dest, name);
+  const bytes = statSync(tarballPath).size;
+  const sha256 = createHash("sha256").update(readFileSync(tarballPath)).digest("hex");
+  return { tarballPath, tarball: name, bytes, sha256 };
+}
