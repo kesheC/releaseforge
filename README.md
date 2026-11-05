@@ -74,7 +74,7 @@ done: freeze changelog -> commit changelog -> tag release -> npm pack (demo-0.3.
 
 What one command did:
 
-1. froze `## [Unreleased]` into `## [0.3.0] - <today>` and rewrote the compare links at the bottom of the changelog
+1. froze `## [Unreleased]` into `## [0.3.0] - <today>` and rewrote the compare links at the bottom of the changelog (the repo URL in compare links comes from `git remote get-url origin`, accepting GitHub https and ssh forms; without an origin it falls back to this repository)
 2. committed that as `chore(release): v0.3.0`
 3. created the tag `v0.3.0`
 4. ran `npm pack` into `release/demo-0.3.0.tgz`
@@ -265,7 +265,7 @@ done: freeze changelog -> commit changelog -> tag release -> npm pack (demo-0.3.
 
 这一条命令做了什么：
 
-1. 把 `## [Unreleased]` 冻结为 `## [0.3.0] - <当天日期>`，并重写变更日志底部的 compare 链接
+1. 把 `## [Unreleased]` 冻结为 `## [0.3.0] - <当天日期>`，并重写变更日志底部的 compare 链接（compare 链接的仓库地址取自 `git remote get-url origin`，识别 GitHub 的 https 与 ssh 形式；没有 origin 时回退到本仓库地址）
 2. 以 `chore(release): v0.3.0` 提交这一改动
 3. 创建标签 `v0.3.0`
 4. 执行 `npm pack`，产出 `release/demo-0.3.0.tgz`

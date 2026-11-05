@@ -10,6 +10,20 @@ import { runPack } from "./pack.js";
 import { renderGates, renderGateSummary, renderPlan } from "./report.js";
 import { collectGateContext, planRelease, readPkgVersion } from "./workflow.js";
 
+/** Derive the GitHub repo URL from the origin remote; falls back to the releaseforge default. */
+export function deriveRepoUrl(root: string, git: (args: string[]) => string): string {
+  let url = "";
+  try {
+    url = git(["remote", "get-url", "origin"]).trim();
+  } catch {
+    url = "";
+  }
+  const https = url.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/);
+  const ssh = url.match(/^git@github\.com:([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+  const m = https ?? ssh;
+  return m ? "https://github.com/" + m[1] : "https://github.com/kesheC/releaseforge";
+}
+
 /**
  * CLI entry. Commands:
  *
@@ -117,7 +131,7 @@ export function main(
       const version = readPkgVersion(root);
       const date = new Date().toISOString().slice(0, 10);
       const res = freezeUnreleased(text, version, date);
-      const withLinks = upsertLinks(res.text, "https://github.com/kesheC/releaseforge", version, prevForLinks(version));
+      const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(version));
       writeFileSync(changelogPath, withLinks, "utf8");
       stdout("froze [" + version + "] into CHANGELOG.md (skeleton: " + res.createdSkeleton + ")\n");
       return 0;
@@ -138,7 +152,7 @@ export function main(
       };
       const changelogPath = join(root, "CHANGELOG.md");
       run("freeze changelog", () => {
-        const withLinks = upsertLinks(res.text, "https://github.com/kesheC/releaseforge", version, prevForLinks(version));
+        const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(version));
         writeFileSync(changelogPath, withLinks, "utf8");
       });
       run("commit changelog", () => {
