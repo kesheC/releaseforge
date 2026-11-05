@@ -123,5 +123,13 @@ describe("cli argv", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-});
 
+  it("a second positional argument is refused like an unknown flag", () => {
+    // "freeze extra" used to run freeze and silently drop the argument.
+    let err = "";
+    const rc = main(["freeze", "extra"], () => {}, (s) => { err += s; });
+    expect(rc).toBe(2);
+    expect(err).toContain("unknown option(s): extra");
+    expect(err).toContain("Usage:");
+  });
+});

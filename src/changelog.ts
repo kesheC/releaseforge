@@ -11,6 +11,40 @@ import type { ChangelogSection } from "./types.js";
 const HEADING_RE = /^##\s+\[([^\]]+)\]\s*(?:-\s*(.*))?$/;
 const LINK_RE = /^\[(Unreleased|\d+\.\d+\.\d+)\]:\s*(\S+)\s*$/;
 
+/**
+ * Fence state for one pass over a markdown document. CommonMark closes a
+ * fence with a line of the SAME character running at least as long as the
+ * opener, so a backtick block is not closed by tildes (and a 3-backtick
+ * opener is not closed by a 5-backtick line). A boolean flip used to swallow
+ * a real section after a mismatched fence, or worse, write two identical
+ * version headings on freeze. Feed every raw line to next(); insideFence()
+ * tells whether a structural line (heading, link) counts as document
+ * structure or as fenced content.
+ */
+export class FenceTracker {
+  private char: string | null = null;
+  private len = 0;
+
+  next(line: string): void {
+    const m = /^(\s*)(`{3,}|~{3,})/.exec(line);
+    if (m) {
+      const marker = m[2]!;
+      const ch = marker[0]!;
+      if (this.char === null) {
+        this.char = ch;
+        this.len = marker.length;
+      } else if (ch === this.char && marker.length >= this.len) {
+        this.char = null;
+        this.len = 0;
+      }
+    }
+  }
+
+  insideFence(): boolean {
+    return this.char !== null;
+  }
+}
+
 /** Parse every "## [title]" section. Content before the first one is ignored.
  * Heading lines inside fenced code blocks (``` or ~~~) are prose, not
  * sections: freeze once froze a fenced example instead of a real section. */
@@ -18,11 +52,12 @@ export function parseSections(text: string): ChangelogSection[] {
   const lines = text.split(/\r?\n/);
   const sections: ChangelogSection[] = [];
   let current: ChangelogSection | null = null;
-  let fence = false;
+  const fence = new FenceTracker();
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
-    const m = fence ? null : HEADING_RE.exec(line);
+    const inside = fence.insideFence();
+    fence.next(line);
+    const m = inside ? null : HEADING_RE.exec(line);
     if (m && m[1] !== undefined) {
       const section: ChangelogSection = { title: m[1], body: [], line: i + 1 };
       current = section;
@@ -65,7 +100,15 @@ const SKELETON = [
  */
 export function freezeUnreleased(text: string, version: string, date: string): FreezeResult {
   const sections = parseSections(text);
-  const unreleased = sections.find((s) => s.title === "Unreleased");
+  const unreleasedList = sections.filter((s) => s.title === "Unreleased");
+  if (unreleasedList.length > 1) {
+    // Freezing used to rewrite only the first one and leave the second
+    // [Unreleased] on disk - a corrupted changelog that gates then reject.
+    throw new Error(
+      "CHANGELOG.md has " + unreleasedList.length + " [Unreleased] sections; merge them first",
+    );
+  }
+  const unreleased = unreleasedList[0] ?? null;
   const heading = "## [" + version + "] - " + date;
 
   // Refuse a freeze that would produce two "## [version]" headings: freezing
@@ -83,11 +126,12 @@ export function freezeUnreleased(text: string, version: string, date: string): F
     // example block is documentation, not document structure, so the scan
     // skips everything between ``` / ~~~ markers (same rule as parseSections).
     const lines = text.split(/\r?\n/);
-    let inFence = false;
+    const fence = new FenceTracker();
     let insertAt = -1;
     for (let i = 0; i < lines.length; i++) {
-      if (/^\s*(```|~~~)/.test(lines[i]!)) inFence = !inFence;
-      if (!inFence && HEADING_RE.test(lines[i]!)) {
+      const inside = fence.insideFence();
+      fence.next(lines[i]!);
+      if (!inside && HEADING_RE.test(lines[i]!)) {
         insertAt = i;
         break;
       }
@@ -139,10 +183,11 @@ export function upsertLinks(text: string, repoUrl: string, version: string, prev
   let firstKeptAt = -1;
   // Fence-aware: a link definition inside a fenced example block is content,
   // not a link entry, so it is passed through untouched.
-  let inFence = false;
+  const fence = new FenceTracker();
   for (const line of lines) {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
-    if (inFence) {
+    const inside = fence.insideFence();
+    fence.next(line);
+    if (inside) {
       body.push(line);
       continue;
     }

@@ -47,11 +47,10 @@ body:
     attributes:
       label: Which command
       options:
-        - check
-        - diff
-        - sync
-        - mask
-        - init
+        - plan
+        - gates
+        - freeze
+        - release
         - not sure
     validations:
       required: true

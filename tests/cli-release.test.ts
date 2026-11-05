@@ -86,6 +86,9 @@ describe("cli release", () => {
     expect(rc).toBe(0);
     expect(out).toContain("done: freeze changelog -> commit changelog -> tag release -> npm pack");
     expect(git(["tag", "--list"]).trim()).toBe("v0.1.0");
+    // Annotated, not lightweight: only annotated tags travel the way the
+    // README's CI integration pushes them.
+    expect(git(["for-each-ref", "refs/tags/v0.1.0", "--format=%(objecttype)"]).trim()).toBe("tag");
     expect(out).toContain("rf-fixture-0.1.0.tgz");
     const tgz = join(root, "release", "rf-fixture-0.1.0.tgz");
     expect(existsSync(tgz)).toBe(true);
@@ -134,4 +137,3 @@ describe("cli release", () => {
     expect(out).toContain("changelog-section");
   });
 });
-

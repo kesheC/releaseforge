@@ -38,10 +38,24 @@ jobs:
           # grabbed blindly, which shipped the [Unreleased] "nothing yet" body
           # as the v0.1.1 notes when Unreleased still sat above the release.
           TAG="${GITHUB_REF_NAME#v}"
+          # Fence-aware: a "## [x.y.z]" line inside a code fence is an example,
+          # not a section boundary. CommonMark closes a fence only with a run
+          # of the SAME character at least as long as the opener, so the
+          # tracker below records both.
           awk -v v="$TAG" '
-            index($0, "## [" v "]") == 1 { found=1; print; next }
-            found && /^## \[/ { exit }
-            found { print }
+            {
+              inside = (fence != "")
+              if (match($0, /^[[:space:]]*(`{3,}|~{3,})/)) {
+                marker = substr($0, RSTART, RLENGTH)
+                gsub(/^[[:space:]]+/, "", marker)
+                ch = substr(marker, 1, 1)
+                if (fence == "") { fence = ch; flen = length(marker) }
+                else if (ch == fence && length(marker) >= flen) { fence = ""; flen = 0 }
+              }
+              if (found && !inside && $0 ~ /^## \[/) { exit }
+              if (!inside && index($0, "## [" v "]") == 1) { found=1; print; next }
+              if (found) { print }
+            }
           ' CHANGELOG.md > notes.md
           if ! head -n 1 notes.md | grep -q "## \[$TAG\]"; then
             echo "CHANGELOG.md has no ## [$TAG] section; refusing to ship wrong notes" && exit 1

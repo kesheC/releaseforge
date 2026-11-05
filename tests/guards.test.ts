@@ -88,6 +88,23 @@ describe("release workflow", () => {
     expect(extract).toContain('grep -q "## \\[$TAG\\]"');
     expect(extract).toContain("exit 1");
   });
+
+  it("the CLI cuts an annotated tag, not a lightweight one", () => {
+    // README integration pushes the tag with two explicit pushes; a
+    // lightweight tag never reaches the remote through the CI tag trigger
+    // shapes the docs teach, and release.yml silently never ran.
+    const cli = read("src/cli.ts");
+    expect(cli).toMatch(/git\(\["tag", "-a", "v" \+ version/);
+  });
+
+  it("release notes extraction tracks code fences before cutting a section", () => {
+    // An awk that cut on the first bare "## [" heading inside a fenced
+    // example truncated the real notes silently.
+    const yml = read(".github/workflows/release.yml");
+    const extract = yml.slice(yml.indexOf("Extract release notes"), yml.indexOf("Create GitHub Release"));
+    expect(extract).toContain("flen = length(marker)");
+    expect(extract).toContain("ch == fence && length(marker) >= flen");
+  });
 });
 
 describe("docs contract", () => {

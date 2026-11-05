@@ -59,4 +59,17 @@ describe("deriveRepoUrl", () => {
     deriveRepoUrl("x", fakeGit(""), (msg) => { warnings.push(msg); });
     expect(warnings).toHaveLength(0);
   });
+
+  it("the non-GitHub warn never echoes credential userinfo", () => {
+    // H1: the warn used to print the raw origin URL; a credential-prefixed
+    // origin (https://user:ghp_x@gitlab.example.com/...) leaked the token
+    // to stderr, where CI logs and pasted issues live.
+    const warnings: string[] = [];
+    const url = deriveRepoUrl("x", fakeGit("https://user:ghp_SUPERSECRET123@gitlab.example.com/acme/widgets.git"), (msg) => { warnings.push(msg); });
+    expect(url).toBe("https://github.com/kesheC/releaseforge");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("gitlab.example.com/acme/widgets.git");
+    expect(warnings[0]).not.toContain("ghp_SUPERSECRET123");
+    expect(warnings[0]).not.toContain("user:");
+  });
 });

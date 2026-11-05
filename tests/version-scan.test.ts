@@ -51,3 +51,18 @@ describe("findVersionConstants", () => {
     expect(found[0]?.value).toBe("3.0.0");
   });
 });
+describe("cross-line version declarations", () => {
+  it("captures the value when the string literal sits on a following line", () => {
+    // The single-line regex reported nothing for this shape, so the gate
+    // compared an empty result set with an empty set and passed a drift.
+    writeFileSync(join(root, "src", "cli.ts"), 'export const VERSION =\n  "1.2.3";\n', "utf8");
+    expect(findVersionConstants(root)).toEqual([
+      { file: "src/cli.ts", name: "VERSION", value: "1.2.3", line: 2 },
+    ]);
+  });
+
+  it("stops looking ahead at a blank line", () => {
+    writeFileSync(join(root, "src", "cli.ts"), 'export const VERSION =\n\nexport const OTHER = "1.0.0";\n', "utf8");
+    expect(findVersionConstants(root)).toEqual([]);
+  });
+});

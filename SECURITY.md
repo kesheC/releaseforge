@@ -30,7 +30,7 @@ This is a small project maintained on a best-effort basis. You should get an ack
 
 ## Scope
 
-Audit .env drift and secret leaks in your repository — zero dependencies.
+Automate the npm release chain — plan, gates, changelog freeze, tag, pack — zero dependencies.
 
 In scope:
 

@@ -16,6 +16,8 @@ import { join } from "node:path";
  */
 
 const DECL_RE = /(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*["'](\d+\.\d+\.\d+)["']/g;
+const DECL_START_RE = /(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)/;
+const VALUE_RE = /["'](\d+\.\d+\.\d+)["']/;
 
 /** The scanner feeds the version-constant-sync gate, so only identifiers
  * whose name contains "version" (any case) are treated as version constants. */
@@ -79,12 +81,33 @@ export function findVersionConstants(root: string): VersionConstant[] {
       if (t.startsWith("*") || t.startsWith("//") || t.startsWith("/*")) continue;
       DECL_RE.lastIndex = 0;
       let m: RegExpExecArray | null;
+      let matched = false;
       while ((m = DECL_RE.exec(raw)) !== null) {
         // A X.Y.Z string in PROTOCOL or CACHE_LIMIT is data, not the shipped
         // version, and must not gate a release (the scanner used to match
         // any identifier).
         if (!isVersionName(m[1]!)) continue;
         found.push({ file: rel, name: m[1]!, value: m[2]!, line: i + 1 });
+        matched = true;
+      }
+      if (!matched) {
+        // Cross-line declaration: "export const VERSION =" with the string
+        // literal on a following line. The single-line regex saw a bare
+        // declaration and reported nothing, so an empty result set compared
+        // equal to an empty set and the version-constant gate passed a
+        // drifted version. Look ahead a few lines for the quoted value.
+        const start = DECL_START_RE.exec(raw);
+        if (start && isVersionName(start[1]!) && /=/.test(raw)) {
+          for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+            const vm = VALUE_RE.exec(lines[j] ?? "");
+            if (vm) {
+              found.push({ file: rel, name: start[1]!, value: vm[1]!, line: j + 1 });
+              break;
+            }
+            const stop = (lines[j] ?? "").trim();
+            if (stop === "" || stop.startsWith("*") || stop.startsWith("//")) break;
+          }
+        }
       }
     }
   }

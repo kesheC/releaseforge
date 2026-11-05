@@ -27,6 +27,14 @@ export function readPkgName(root: string): string {
   return pkg.name;
 }
 
+/** The tarball npm pack writes for a package name: <name>-<version>.tgz
+ * with the scope flattened (@scope/thing packs as scope-thing-VER.tgz).
+ * The stale-tarball pre-clean used to join "@scope/thing-VER.tgz" and
+ * silently missed the file on every scoped package. */
+export function tarballName(name: string, version: string): string {
+  return name.replace(/^@/, "").replace("/", "-") + "-" + version + ".tgz";
+}
+
 /** package-lock.json version, or null when the lockfile is absent. */
 export function readLockVersion(root: string): string | null {
   try {

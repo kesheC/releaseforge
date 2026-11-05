@@ -33,6 +33,71 @@ describe("fenced headings in a changelog with no real Unreleased", () => {
   });
 });
 
+describe("asymmetric fences (CommonMark: only the same marker closes a fence)", () => {
+  it("a tilde line does not close a backtick fence, so a real section after it still counts", () => {
+    // ``` opens, ~~~ appears inside the block as content, then the block
+    // closes with ```. A boolean flip treated ~~~ as the closer and
+    // swallowed the real [0.1.0] section that follows.
+    const text = [
+      "# Changelog",
+      "",
+      "```md",
+      "~~~",
+      "example",
+      "~~~",
+      "```",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Added",
+      "- x",
+    ].join("\n");
+    const result = freezeUnreleased(text, "0.2.0", "2025-06-01");
+    expect(result.frozeUnreleased).toBe(true);
+    expect(result.text).toContain("## [0.2.0] - 2025-06-01");
+    expect(result.text).not.toContain("## [Unreleased]");
+  });
+
+  it("a shorter run of the same marker does not close the fence", () => {
+    const text = [
+      "# Changelog",
+      "",
+      "````md",
+      "```",
+      "nested example",
+      "```",
+      "````",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Added",
+      "- x",
+    ].join("\n");
+    const result = freezeUnreleased(text, "0.2.0", "2025-06-01");
+    expect(result.frozeUnreleased).toBe(true);
+    expect(result.text).toContain("## [0.2.0] - 2025-06-01");
+  });
+});
+
+describe("multiple [Unreleased] sections", () => {
+  it("freeze refuses with a clear error instead of freezing only the first", () => {
+    const text = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Added",
+      "- a",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Fixed",
+      "- b",
+    ].join("\n");
+    expect(() => freezeUnreleased(text, "0.2.0", "2025-06-01")).toThrow(/2 \[Unreleased\] sections/);
+  });
+});
+
 describe("fenced link definitions", () => {
   it("keeps example link lines inside a code fence", () => {
     const text = upsertLinks(NO_UNRELEASED, "https://github.com/acme/widgets", "0.2.0", null);

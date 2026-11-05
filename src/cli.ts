@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runGates } from "./gates.js";
@@ -9,7 +9,7 @@ import { releaseNotes } from "./commits.js";
 import { lastTag, systemGit, type GitRunner } from "./git.js";
 import { runPack } from "./pack.js";
 import { renderGates, renderGateSummary, renderPlan } from "./report.js";
-import { collectGateContext, planRelease, readPkgName, readPkgVersion } from "./workflow.js";
+import { collectGateContext, planRelease, readPkgName, readPkgVersion, tarballName } from "./workflow.js";
 import { installPipeGuard } from "./pipe.js";
 
 /** Derive the GitHub repo URL from the origin remote; falls back to the
@@ -36,8 +36,11 @@ export function deriveRepoUrl(
     const ssh = url.match(/^git@github\.com:([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
     const m = https ?? ssh;
     if (m) return "https://github.com/" + m[1];
+    // Print the stripped URL: the raw origin may embed credentials
+    // (https://user:ghp_x@gitlab.example.com/...), and a warn must never
+    // echo them to stderr where CI logs and pasted issues live.
     warn?.(
-      "releaseforge: origin is not a GitHub URL (" + url +
+      "releaseforge: origin is not a GitHub URL (" + stripped +
       "); compare links fall back to https://github.com/kesheC/releaseforge\n",
     );
   }
@@ -97,6 +100,9 @@ function parseArgv(argv: string[]): Parsed {
     else if (a === "--dry-run") p.dryRun = true;
     else if (a.startsWith("-")) p.unknown.push(a);
     else if (p.command === null) p.command = a;
+    // A second positional ("freeze extra") used to vanish silently; the
+    // strict-refusal stance for unknown flags applies to it too.
+    else p.unknown.push(a);
   }
   return p;
 }
@@ -257,15 +263,20 @@ export function main(
         git(["commit", "-m", "chore(release): v" + version]);
       })) return 2;
       if (!run("tag release", () => {
-        git(["tag", "v" + version]);
+        // Annotated, not lightweight: git push --follow-tags and many CI
+        // tag triggers only carry annotated tags, and a tag that never
+        // reaches the remote makes release.yml silently never run.
+        git(["tag", "-a", "v" + version, "-m", "chore(release): v" + version]);
       })) return 2;
       let tarball = "";
       if (!run("npm pack", () => {
         mkdirSync(join(root, "release"), { recursive: true });
-        // The tarball is <pkg.name>-<version>.tgz: derive the stale-file
-        // pre-clean from the package name instead of a hardcoded prefix, or
-        // the cleanup silently misses every other package.
-        rmSync(join(root, "release", readPkgName(root) + "-" + version + ".tgz"), { force: true });
+        // The tarball is <pkg.name>-<version>.tgz with the scope flattened
+        // (@scope/thing packs as scope-thing-VER.tgz); derive the stale-file
+        // pre-clean from the package name with the same flattening, or the
+        // cleanup silently misses every scoped package.
+        const pkgName = tarballName(readPkgName(root), version);
+        rmSync(join(root, "release", pkgName + "-" + version + ".tgz"), { force: true });
         const packed = runPack(root, join(root, "release"));
         tarball = packed.tarball;
       })) return 2;
@@ -283,7 +294,12 @@ export function main(
   }
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// realpathSync: npm global installs exec the bin through a symlink; resolve
+// it so the main-module check still matches the real dist file.
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
+) {
   installPipeGuard();
   process.exitCode = main(process.argv.slice(2));
 }

@@ -145,7 +145,7 @@ From [Conventional Commits](https://www.conventionalcommits.org/):
 The CLI is a thin argv parser over the exported functions - everything the commands do is importable:
 
 ```js
-import { planRelease, runGates, systemGit } from "releaseforge";
+import { collectGateContext, planRelease, runGates, systemGit } from "releaseforge";
 
 const git = systemGit(process.cwd());
 const plan = planRelease(process.cwd(), git);   // { from, to, bump, commits }
@@ -161,17 +161,18 @@ Gates are designed for CI: exit codes carry the verdict, output is plain text, a
 ```yaml
 - run: npx releaseforge gates
 - run: npx releaseforge release
-- run: git push origin main --follow-tags
+- run: git push origin main
+- run: git push origin v0.2.0   # the annotated tag release cut
 ```
 
-Push the tag and the included release.yml turns it into a GitHub Release with the tarball, a stable-name copy, and a SHA256SUMS.txt.
+`release` cuts an annotated tag, so push it explicitly: `--follow-tags` carries only annotated tags that are reachable from pushed commits, and a tag that never lands on the remote means release.yml silently never runs. Once the tag is up, the included release.yml turns it into a GitHub Release with the tarball, a stable-name copy, and a SHA256SUMS.txt.
 
 ## Development
 
 ```bash
 npm ci            # install the dev toolchain
 npm run build     # emit dist/
-npm test          # offline; test counts live in CHANGELOG Quality lines
+npm test          # offline
 npm run coverage  # thresholds: 80 statements / 70 branches / 85 functions / 80 lines
 npm run dev       # build, then run dist/cli.js
 ```
@@ -335,7 +336,7 @@ $ releaseforge release
 CLI 只是参数解析的薄壳 —— 命令能做的每件事都可以导入：
 
 ```js
-import { planRelease, runGates, systemGit } from "releaseforge";
+import { collectGateContext, planRelease, runGates, systemGit } from "releaseforge";
 
 const git = systemGit(process.cwd());
 const plan = planRelease(process.cwd(), git);   // { from, to, bump, commits }
@@ -351,17 +352,18 @@ const gates = runGates(collectGateContext(process.cwd(), git));
 ```yaml
 - run: npx releaseforge gates
 - run: npx releaseforge release
-- run: git push origin main --follow-tags
+- run: git push origin main
+- run: git push origin v0.2.0   # release 打出的附注标签
 ```
 
-推送标签后，仓库自带的 release.yml 会把它变成一个 GitHub Release：附带 tarball、稳定名副本和 SHA256SUMS.txt。
+`release` 打的是附注标签，必须单独显式推送：`--follow-tags` 只携带已推送提交可达的附注标签，标签没到远端，release.yml 就永远不会触发——发布静默失败。标签上去之后，仓库自带的 release.yml 会把它变成一个 GitHub Release：附带 tarball、稳定名副本和 SHA256SUMS.txt。
 
 ## 开发
 
 ```bash
 npm ci            # 安装开发工具链
 npm run build     # 产出 dist/
-npm test          # 离线；测试数见 CHANGELOG Quality 行
+npm test          # 离线
 npm run coverage  # 阈值：80 statements / 70 branches / 85 functions / 80 lines
 npm run dev       # build 后运行 dist/cli.js
 ```
@@ -375,4 +377,3 @@ npm run dev       # build 后运行 dist/cli.js
 ## 许可
 
 [MIT](LICENSE)
-
