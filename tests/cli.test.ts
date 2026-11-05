@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { main } from "../src/cli.js";
@@ -32,8 +35,23 @@ describe("cli argv", () => {
     expect(main([], () => {})).toBe(0);
   });
 
-  it("an unknown command exits 2 with usage", () => {
-    expect(main(["bogus"], () => {})).toBe(2);
+  it("an unknown command exits 2 and prints usage on stderr", () => {
+    let err = "";
+    expect(main(["bogus"], () => {}, (s) => { err += s; })).toBe(2);
+    expect(err).toContain("Usage:");
+  });
+
+  it("gates outside a git repository fails with a one-line error, not a stack", () => {
+    const dir = mkdtempSync(join(tmpdir(), "rf-nogit-"));
+    try {
+      let err = "";
+      const rc = main(["gates"], () => {}, (s) => { err += s; }, dir);
+      expect(rc).toBe(2);
+      expect(err).toContain("releaseforge:");
+      expect(err).not.toMatch(/\n\s+at /); // no stack frames
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("plan runs against this repo and prints the plan header", () => {

@@ -26,8 +26,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm audit --audit-level=high
-      # The README shows real transcripts; the CI leg re-runs the README
-      # examples through the guard test so a doc drift fails the build.
+      # README transcripts are re-verified by hand against the built CLI
+      # before a release; CI runs the unit and guard suites only.
       - run: npm run build
 
   coverage:

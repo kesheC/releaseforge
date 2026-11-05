@@ -17,4 +17,4 @@ export type { VersionConstant } from "./version.js";
 export { runPack } from "./pack.js";
 export type { PackResult } from "./pack.js";
 export { renderGates, renderPlan, renderGateSummary } from "./report.js";
-export { collectGateContext, planRelease, readPkgVersion, readLockVersion, readChangelog, commitsSinceLastTag } from "./workflow.js";
+export { collectGateContext, planRelease, readPkgName, readPkgVersion, readLockVersion, readChangelog, commitsSinceLastTag } from "./workflow.js";

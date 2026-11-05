@@ -2,13 +2,14 @@
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { runGates } from "./gates.js";
 import { freezeUnreleased, upsertLinks } from "./changelog.js";
 import { releaseNotes } from "./commits.js";
-import { systemGit } from "./git.js";
+import { lastTag, systemGit, type GitRunner } from "./git.js";
 import { runPack } from "./pack.js";
 import { renderGates, renderGateSummary, renderPlan } from "./report.js";
-import { collectGateContext, planRelease, readPkgVersion } from "./workflow.js";
+import { collectGateContext, planRelease, readPkgName, readPkgVersion } from "./workflow.js";
 
 /** Derive the GitHub repo URL from the origin remote; falls back to the releaseforge default. */
 export function deriveRepoUrl(root: string, git: (args: string[]) => string): string {
@@ -55,7 +56,7 @@ function usage(): string {
     "Options:",
     "  -h, --help      Show this help.",
     "  -V, --version   Print the version.",
-    "  --dry-run       release only: print the steps without writing anything.",
+    "  --dry-run       print the steps without writing anything (release, freeze).",
   ].join("\n");
 }
 
@@ -77,13 +78,47 @@ function parseArgv(argv: string[]): Parsed {
   return p;
 }
 
-/** Previous version for the compare link. A changelog freeze only knows the
- * version being released; the release.yml workflow rewrites links from tags,
- * so the CLI writes the version entry with the same version on both sides
- * only when it cannot know better. Kept as a function so the policy has one
- * named home. */
-function prevForLinks(version: string): string | null {
-  return version;
+/** Today in the local zone as YYYY-MM-DD. An ISO-UTC slice wrote yesterday's
+ * date for evening releases east of Greenwich. */
+function localDate(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return d.getFullYear() + "-" + mm + "-" + dd;
+}
+
+/** Previous version for the compare link: the last tag reachable from HEAD
+ * without its v prefix, or null when the repo has no tags yet. upsertLinks
+ * omits the version entry for a null previous, so a first release no longer
+ * writes a version-compared-to-itself dead link. */
+function prevForLinks(git: GitRunner): string | null {
+  const tag = lastTag(git);
+  if (tag === null) return null;
+  return tag.startsWith("v") ? tag.slice(1) : tag;
+}
+
+/** First readable line of a failed child call (git/npm). execFileSync errors
+ * carry the whole stderr blob in message; a CLI failure should be one line,
+ * not a stack. */
+function childReason(err: unknown): string {
+  const e = err as { message?: string; stderr?: unknown };
+  const blob = typeof e.stderr === "string" && e.stderr.trim() !== "" ? e.stderr : (e.message ?? String(err));
+  return blob.trim().split(/\r?\n/)[0] ?? String(err);
+}
+
+/** collectGateContext with a one-line failure report. Running outside a git
+ * repository used to print a raw stack; now it prints git's own first line. */
+function gateContext(
+  root: string,
+  git: GitRunner,
+  stderr: (s: string) => void,
+): ReturnType<typeof collectGateContext> | null {
+  try {
+    return collectGateContext(root, git);
+  } catch (err) {
+    stderr("releaseforge: " + childReason(err) + "\n");
+    return null;
+  }
 }
 
 /** Run one CLI invocation. Returns the process exit code. Exported for
@@ -109,12 +144,19 @@ export function main(
 
   switch (p.command) {
     case "plan": {
-      const plan = planRelease(root, git);
+      let plan: ReturnType<typeof planRelease>;
+      try {
+        plan = planRelease(root, git);
+      } catch (err) {
+        stderr("releaseforge: " + childReason(err) + "\n");
+        return 2;
+      }
       stdout(renderPlan(plan, releaseNotes(plan.commits)) + "\n");
       return 0;
     }
     case "gates": {
-      const ctx = collectGateContext(root, git);
+      const ctx = gateContext(root, git, stderr);
+      if (ctx === null) return 2;
       const results = runGates(ctx);
       stdout(renderGates(results) + "\n\n" + renderGateSummary(results) + "\n");
       return results.some((r) => r.status === "fail") ? 1 : 0;
@@ -125,25 +167,28 @@ export function main(
       try {
         text = readFileSync(changelogPath, "utf8");
       } catch {
-        stderr("releaseforge: no CHANGELOG.md in the current directory");
+        stderr("releaseforge: no CHANGELOG.md in the current directory\n");
         return 2;
       }
       const version = readPkgVersion(root);
-      const date = new Date().toISOString().slice(0, 10);
-      const res = freezeUnreleased(text, version, date);
-      const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(version));
+      const res = freezeUnreleased(text, version, localDate());
+      if (p.dryRun) {
+        stdout("dry run, would freeze [" + version + "] into CHANGELOG.md (skeleton: " + res.createdSkeleton + ")\n");
+        return 0;
+      }
+      const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(git));
       writeFileSync(changelogPath, withLinks, "utf8");
       stdout("froze [" + version + "] into CHANGELOG.md (skeleton: " + res.createdSkeleton + ")\n");
       return 0;
     }
     case "release": {
-      const ctx = collectGateContext(root, git);
+      const ctx = gateContext(root, git, stderr);
+      if (ctx === null) return 2;
       const results = runGates(ctx);
       stdout(renderGates(results) + "\n\n" + renderGateSummary(results) + "\n");
       if (results.some((r) => r.status === "fail")) return 1;
       const version = ctx.pkgVersion;
-      const date = new Date().toISOString().slice(0, 10);
-      const res = freezeUnreleased(ctx.changelogBody ?? "", version, date);
+      const res = freezeUnreleased(ctx.changelogBody ?? "", version, localDate());
       const steps: string[] = [];
       const run = (name: string, fn: () => void): void => {
         if (p.dryRun) { steps.push(name); return; }
@@ -152,7 +197,7 @@ export function main(
       };
       const changelogPath = join(root, "CHANGELOG.md");
       run("freeze changelog", () => {
-        const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(version));
+        const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(git));
         writeFileSync(changelogPath, withLinks, "utf8");
       });
       run("commit changelog", () => {
@@ -165,7 +210,10 @@ export function main(
       let tarball = "";
       run("npm pack", () => {
         mkdirSync(join(root, "release"), { recursive: true });
-        rmSync(join(root, "release", "releaseforge-" + version + ".tgz"), { force: true });
+        // The tarball is <pkg.name>-<version>.tgz: derive the stale-file
+        // pre-clean from the package name instead of a hardcoded prefix, or
+        // the cleanup silently misses every other package.
+        rmSync(join(root, "release", readPkgName(root) + "-" + version + ".tgz"), { force: true });
         const packed = runPack(root, join(root, "release"));
         tarball = packed.tarball;
       });
@@ -174,11 +222,15 @@ export function main(
       return 0;
     }
     default:
-      stdout(usage());
-      return p.command === null ? 0 : 2;
+      if (p.command === null) {
+        stdout(usage());
+        return 0;
+      }
+      stderr(usage() + "\n");
+      return 2;
   }
 }
 
-if (process.argv[1] !== undefined && import.meta.url === new URL("file:///" + process.argv[1].replace(/\\/g, "/")).href) {
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(main(process.argv.slice(2)));
 }

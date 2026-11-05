@@ -20,6 +20,13 @@ export function readPkgVersion(root: string): string {
   return pkg.version;
 }
 
+/** package.json name. Throws when missing (npm pack would fail too). */
+export function readPkgName(root: string): string {
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name?: string };
+  if (!pkg.name) throw new Error("package.json has no name field");
+  return pkg.name;
+}
+
 /** package-lock.json version, or null when the lockfile is absent. */
 export function readLockVersion(root: string): string | null {
   try {

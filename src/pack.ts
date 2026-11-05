@@ -23,13 +23,20 @@ export interface PackResult {
 
 /** Run npm pack --pack-destination <dest> and return the tarball info. */
 export function runPack(root: string, dest: string): PackResult {
-  const out = execFileSync("npm", ["pack", "--pack-destination", dest], {
+  // Windows spawns npm through npm.cmd, which execFileSync cannot launch
+  // without a shell - and with a shell the argv is re-joined with spaces,
+  // so a dest containing spaces must be quoted here or npm packs into the
+  // first space-free token (or fails outright). JSON.stringify wraps the
+  // path in double quotes and escapes embedded ones, which is exactly the
+  // quoting the re-join needs; cmd metacharacters stay literal inside
+  // double quotes. POSIX keeps argv intact and stays unquoted.
+  const shelled = platform() === "win32";
+  const packDest = shelled ? JSON.stringify(dest) : dest;
+  const out = execFileSync("npm", ["pack", "--pack-destination", packDest], {
     cwd: root,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
-    // Windows spawns npm through npm.cmd, which execFileSync cannot launch
-    // without a shell. POSIX is fine without one.
-    shell: platform() === "win32",
+    shell: shelled,
     // npm notice lines go to stderr but pollute merged streams; a CLI whose
     // stdout is a transcript should not emit decoration around the answer.
     env: { ...process.env, npm_config_loglevel: "error" },

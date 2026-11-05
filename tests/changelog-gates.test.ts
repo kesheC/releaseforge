@@ -76,6 +76,14 @@ describe("upsertLinks", () => {
     expect(links.map((l) => l.title)).toEqual(["Unreleased"]);
   });
 
+  it("keeps link entries it does not manage", () => {
+    const seeded = "# C\n\n## [Unreleased]\n- x\n\n[0.1.0]: https://x/y/compare/v0.0.9...v0.1.0\n";
+    const t = upsertLinks(seeded, "https://x/y", "0.2.0", "0.1.0");
+    const links = parseLinkBlock(t);
+    expect(links).toContainEqual({ title: "0.1.0", url: "https://x/y/compare/v0.0.9...v0.1.0" });
+    expect(links.map((l) => l.title)).toEqual(["Unreleased", "0.2.0", "0.1.0"]);
+  });
+
   it("is idempotent: running twice yields the same text", () => {
     const once = upsertLinks(HEADED, "https://x/y", "0.2.0", "0.1.0");
     const twice = upsertLinks(once, "https://x/y", "0.2.0", "0.1.0");
@@ -120,9 +128,12 @@ describe("runGates", () => {
     expect(r.find((g) => g.id === "version-constant-sync")?.status).toBe("fail");
   });
 
-  it("fails tag-available when the tag exists", () => {
+  it("fails tag-available when the tag exists, with a recovery hint", () => {
     const r = runGates({ ...base, existingTags: ["v0.2.0"] });
-    expect(r.find((g) => g.id === "tag-available")?.status).toBe("fail");
+    const gate = r.find((g) => g.id === "tag-available");
+    expect(gate?.status).toBe("fail");
+    expect(gate?.detail).toContain("bump the version first");
+    expect(gate?.detail).toContain("git tag -d v0.2.0");
   });
 });
 

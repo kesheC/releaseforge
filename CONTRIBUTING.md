@@ -63,12 +63,13 @@ install to work on it *is* the whole supply chain. It fails on high and critical
 only; a moderate finding is worth reading when you next touch the dependencies, but it is not
 worth blocking an unrelated fix.
 
-## The README transcripts are executable
+## The README transcripts are real
 
-Every command transcript in README.md is verified against the real CLI before it is committed,
-and the guard tests re-verify the example blocks that CI can run. If your change alters CLI
-output, the transcripts change with it, in the same pull request. A README that shows output
-the code does not produce is treated as a bug, not documentation drift.
+Every command transcript in README.md was captured from the real CLI, and the maintainer
+re-verifies the blocks against the freshly built binary before each release. CI runs the unit
+and guard tests only - it does not replay the README blocks. If your change alters CLI output,
+update the transcripts in the same pull request: a README that shows output the code does not
+produce is treated as a bug, not documentation drift.
 
 ## Release policy
 

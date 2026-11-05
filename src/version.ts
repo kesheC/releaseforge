@@ -10,11 +10,18 @@ import { join } from "node:path";
  *
  *   export const VERSION = "1.2.3"        (const / let, single or double quotes)
  *
- * in TypeScript files under src/ and reports every value found. The gate
- * against package.json.
+ * in TypeScript files under src/ and reports every value found. Only
+ * identifiers whose name contains "version" (any case) count - a X.Y.Z
+ * string in some other constant is data, not the shipped version.
  */
 
 const DECL_RE = /(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*["'](\d+\.\d+\.\d+)["']/g;
+
+/** The scanner feeds the version-constant-sync gate, so only identifiers
+ * whose name contains "version" (any case) are treated as version constants. */
+function isVersionName(name: string): boolean {
+  return /version/i.test(name);
+}
 
 export interface VersionConstant {
   /** Path relative to root, forward slashes. */
@@ -73,6 +80,10 @@ export function findVersionConstants(root: string): VersionConstant[] {
       DECL_RE.lastIndex = 0;
       let m: RegExpExecArray | null;
       while ((m = DECL_RE.exec(raw)) !== null) {
+        // A X.Y.Z string in PROTOCOL or CACHE_LIMIT is data, not the shipped
+        // version, and must not gate a release (the scanner used to match
+        // any identifier).
+        if (!isVersionName(m[1]!)) continue;
         found.push({ file: rel, name: m[1]!, value: m[2]!, line: i + 1 });
       }
     }

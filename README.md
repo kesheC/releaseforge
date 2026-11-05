@@ -84,13 +84,12 @@ The frozen changelog head, as the run above left it:
 ```text
 # Changelog
 
-## [0.3.0] - 2026-11-04
+## [0.3.0] - <today>
 
 ### Added
 - json export flag
 
 [Unreleased]: https://github.com/kesheC/releaseforge/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/kesheC/releaseforge/compare/v0.3.0...v0.3.0
 ```
 
 ### Gates fail loudly
@@ -104,7 +103,7 @@ $ releaseforge release
   FAIL  changelog-section  CHANGELOG.md has an [Unreleased] section to freeze - no ## [Unreleased] section to freeze; add one first
   ok    package-lock-sync  package-lock.json version matches package.json
   ok    version-constant-sync  declared version constants match package.json
-  FAIL  tag-available  the release tag does not exist yet - tag v0.3.0 already exists; bump the version first
+  FAIL  tag-available  the release tag does not exist yet - tag v0.3.0 already exists; bump the version first, or delete it with git tag -d v0.3.0
 
 5 gates, 3 failed: clean-tree, changelog-section, tag-available
 ```
@@ -275,13 +274,12 @@ done: freeze changelog -> commit changelog -> tag release -> npm pack (demo-0.3.
 ```text
 # Changelog
 
-## [0.3.0] - 2026-11-04
+## [0.3.0] - <今天>
 
 ### Added
 - json export flag
 
 [Unreleased]: https://github.com/kesheC/releaseforge/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/kesheC/releaseforge/compare/v0.3.0...v0.3.0
 ```
 
 ### 闸门大声失败
@@ -295,7 +293,7 @@ $ releaseforge release
   FAIL  changelog-section  CHANGELOG.md has an [Unreleased] section to freeze - no ## [Unreleased] section to freeze; add one first
   ok    package-lock-sync  package-lock.json version matches package.json
   ok    version-constant-sync  declared version constants match package.json
-  FAIL  tag-available  the release tag does not exist yet - tag v0.3.0 already exists; bump the version first
+  FAIL  tag-available  the release tag does not exist yet - tag v0.3.0 already exists; bump the version first, or delete it with git tag -d v0.3.0
 
 5 gates, 3 failed: clean-tree, changelog-section, tag-available
 ```

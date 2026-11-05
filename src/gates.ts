@@ -59,7 +59,7 @@ export function runGates(ctx: GateContext): GateResult[] {
   // 5. tag available
   const tag = `v${ctx.pkgVersion}`;
   if (ctx.existingTags.includes(tag)) {
-    results.push(fail("tag-available", `tag ${tag} already exists; bump the version first`));
+    results.push(fail("tag-available", `tag ${tag} already exists; bump the version first, or delete it with git tag -d ${tag}`));
   } else {
     results.push(pass("tag-available"));
   }

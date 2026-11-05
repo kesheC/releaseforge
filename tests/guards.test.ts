@@ -79,3 +79,12 @@ describe("release workflow", () => {
     expect(firstGh).toBeGreaterThan(gate);
   });
 });
+
+describe("coverage contract", () => {
+  it("keeps the four coverage floors in vitest.config.ts", () => {
+    const cfg = read("vitest.config.ts");
+    expect(cfg).toMatch(
+      /thresholds:\s*\{\s*statements:\s*80,\s*branches:\s*70,\s*functions:\s*85,\s*lines:\s*80,?\s*\}/,
+    );
+  });
+});

@@ -50,6 +50,15 @@ describe("cli freeze", () => {
     expect(rc).toBe(2);
     expect(err).toContain("no CHANGELOG.md");
   });
+
+  it("dry run prints the freeze without writing CHANGELOG.md", () => {
+    const before = readFileSync(join(root, "CHANGELOG.md"), "utf8");
+    let out = "";
+    const rc = main(["freeze", "--dry-run"], (s) => { out += s; }, () => {}, root);
+    expect(rc).toBe(0);
+    expect(out).toContain("dry run, would freeze [0.1.0]");
+    expect(readFileSync(join(root, "CHANGELOG.md"), "utf8")).toBe(before);
+  });
 });
 
 describe("cli release", () => {
