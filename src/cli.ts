@@ -39,7 +39,7 @@ export function deriveRepoUrl(root: string, git: (args: string[]) => string): st
  * pipeline auditable.
  */
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 
 function usage(): string {
   return [

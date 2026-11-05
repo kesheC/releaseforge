@@ -1,6 +1,6 @@
 {
   "name": "releaseforge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Automate the npm release chain - semver plan, gate checks, tag, GitHub Release assets - zero dependencies",
   "type": "module",
   "bin": {
