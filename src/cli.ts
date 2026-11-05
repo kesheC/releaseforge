@@ -10,6 +10,7 @@ import { lastTag, systemGit, type GitRunner } from "./git.js";
 import { runPack } from "./pack.js";
 import { renderGates, renderGateSummary, renderPlan } from "./report.js";
 import { collectGateContext, planRelease, readPkgName, readPkgVersion } from "./workflow.js";
+import { installPipeGuard } from "./pipe.js";
 
 /** Derive the GitHub repo URL from the origin remote; falls back to the
  * releaseforge default. Credential-prefixed https origins are the standard
@@ -283,5 +284,6 @@ export function main(
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exit(main(process.argv.slice(2)));
+  installPipeGuard();
+  process.exitCode = main(process.argv.slice(2));
 }

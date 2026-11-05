@@ -79,9 +79,19 @@ export function freezeUnreleased(text: string, version: string, date: string): F
 
   if (!unreleased) {
     // First release: insert right after the header block, before the first
-    // existing section or at the end.
+    // existing section or at the end. Fence-aware: a heading inside a fenced
+    // example block is documentation, not document structure, so the scan
+    // skips everything between ``` / ~~~ markers (same rule as parseSections).
     const lines = text.split(/\r?\n/);
-    let insertAt = lines.findIndex((l) => HEADING_RE.test(l));
+    let inFence = false;
+    let insertAt = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*(```|~~~)/.test(lines[i]!)) inFence = !inFence;
+      if (!inFence && HEADING_RE.test(lines[i]!)) {
+        insertAt = i;
+        break;
+      }
+    }
     if (insertAt < 0) insertAt = lines.length;
     const block = [heading, ...SKELETON, ""];
     lines.splice(insertAt, 0, ...block);
@@ -127,7 +137,15 @@ export function upsertLinks(text: string, repoUrl: string, version: string, prev
   const kept: string[] = [];
   const body: string[] = [];
   let firstKeptAt = -1;
+  // Fence-aware: a link definition inside a fenced example block is content,
+  // not a link entry, so it is passed through untouched.
+  let inFence = false;
   for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    if (inFence) {
+      body.push(line);
+      continue;
+    }
     const m = LINK_RE.exec(line);
     if (m && m[1]) {
       if (!want.some((w) => w.title === m![1])) {
