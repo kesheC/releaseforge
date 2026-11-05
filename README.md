@@ -171,7 +171,7 @@ Push the tag and the included release.yml turns it into a GitHub Release with th
 ```bash
 npm ci            # install the dev toolchain
 npm run build     # emit dist/
-npm test          # 58 tests, offline
+npm test          # offline; test counts live in CHANGELOG Quality lines
 npm run coverage  # thresholds: 80 statements / 70 branches / 85 functions / 80 lines
 npm run dev       # build, then run dist/cli.js
 ```
@@ -361,7 +361,7 @@ const gates = runGates(collectGateContext(process.cwd(), git));
 ```bash
 npm ci            # 安装开发工具链
 npm run build     # 产出 dist/
-npm test          # 58 个测试，离线
+npm test          # 离线；测试数见 CHANGELOG Quality 行
 npm run coverage  # 阈值：80 statements / 70 branches / 85 functions / 80 lines
 npm run dev       # build 后运行 dist/cli.js
 ```

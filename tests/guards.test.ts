@@ -80,6 +80,18 @@ describe("release workflow", () => {
   });
 });
 
+describe("docs contract", () => {
+  it("keeps hand-written test counts out of README and CONTRIBUTING", () => {
+    // Test counts drift on every suite change (a released tarball once shipped a stale "58 tests").
+    // The npm test line documents the experience, not a number; Quality lines in CHANGELOG carry counts at release time.
+    for (const file of ["README.md", "CONTRIBUTING.md"]) {
+      const text = read(file);
+      expect(text).not.toMatch(/\b\d+ tests?\b/);
+      expect(text).not.toMatch(/\b\d+ 个测试/);
+    }
+  });
+});
+
 describe("coverage contract", () => {
   it("keeps the four coverage floors in vitest.config.ts", () => {
     const cfg = read("vitest.config.ts");
