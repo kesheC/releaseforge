@@ -6,6 +6,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- nothing yet
+
+## [0.1.2] - 2026-11-05
+
 ### Fixed
 
 - Unknown flags (a typo like `--dryrun`) are refused with usage and exit 2 instead of silently ignored - the misspelled safety flag used to escalate to real writes.

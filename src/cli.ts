@@ -61,7 +61,7 @@ export function deriveRepoUrl(
  * pipeline auditable.
  */
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 
 function usage(): string {
   return [
