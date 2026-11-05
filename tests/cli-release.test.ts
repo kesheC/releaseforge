@@ -93,5 +93,45 @@ describe("cli release", () => {
     const log = git(["log", "--oneline"]).trim().split("\n");
     expect(log[0]).toContain("chore(release): v0.1.0");
   });
+
+  it("a failed step reports the step, completed steps, and exits 2 without a stack", () => {
+    // release/ exists as a committed FILE: mkdirSync for the pack step fails
+    // after freeze+commit+tag already applied. Used to be a raw 19-line stack.
+    // Committed so the clean-tree gate does not stop the run first.
+    writeFileSync(join(root, "release"), "not a dir\n", "utf8");
+    git(["add", "-A"]);
+    git(["commit", "-qm", "chore: block the release dir with a file"]);
+    let err = "";
+    const rc = main(["release"], () => {}, (s) => { err += s; }, root);
+    expect(rc).toBe(2);
+    expect(err).toContain("step <npm pack> failed:");
+    expect(err).toContain("completed: freeze changelog, commit changelog, tag release");
+    expect(err).toContain("git tag -d v0.1.0");
+    expect(err).not.toMatch(/\n\s+at /); // no stack frames
+  });
+
+  it("double freeze refuses with exit 2 and a one-line error", () => {
+    expect(main(["freeze"], () => {}, () => {}, root)).toBe(0);
+    let err = "";
+    const rc = main(["freeze"], () => {}, (s) => { err += s; }, root);
+    expect(rc).toBe(2);
+    expect(err).toContain("already has a [0.1.0] section");
+    expect(err).not.toMatch(/\n\s+at /);
+    // The changelog still holds exactly one version section.
+    const text = readFileSync(join(root, "CHANGELOG.md"), "utf8");
+    expect((text.match(/## \[0\.1\.0\]/g) ?? []).length).toBe(1);
+  });
+
+  it("release stops before the write phase when the changelog was already frozen", () => {
+    expect(main(["freeze"], () => {}, () => {}, root)).toBe(0);
+    // Reset the tree so clean-tree passes, but the changelog-section gate now
+    // fails (no [Unreleased]): release must exit 1 without writing anything.
+    git(["add", "-A"]);
+    git(["commit", "-qm", "chore: frozen changelog"]);
+    let out = "";
+    const rc = main(["release"], (s) => { out += s; }, () => {}, root);
+    expect(rc).toBe(1);
+    expect(out).toContain("changelog-section");
+  });
 });
 

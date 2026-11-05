@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -68,6 +68,60 @@ describe("cli argv", () => {
       expect(out).toContain(id);
     }
     expect(out).toMatch(/\d gates/);
+  });
+
+  it("an unknown flag exits 2 with usage on stderr (typo'd --dry-run must not run)", () => {
+    let err = "";
+    const rc = main(["release", "--dryrun"], () => {}, (s) => { err += s; });
+    expect(rc).toBe(2);
+    expect(err).toContain("unknown option(s): --dryrun");
+    expect(err).toContain("Usage:");
+  });
+
+  it("multiple unknown flags are all reported", () => {
+    let err = "";
+    const rc = main(["plan", "--json", "-x"], () => {}, (s) => { err += s; });
+    expect(rc).toBe(2);
+    expect(err).toContain("--json -x");
+  });
+
+  it("freeze without package.json exits 2 with a one-line error, not a stack", () => {
+    const dir = mkdtempSync(join(tmpdir(), "rf-nopkg-"));
+    try {
+      writeFileSync(join(dir, "CHANGELOG.md"), "## [Unreleased]\n\n### Added\n- x\n", "utf8");
+      let err = "";
+      const rc = main(["freeze"], () => {}, (s) => { err += s; }, dir);
+      expect(rc).toBe(2);
+      expect(err).toContain("releaseforge:");
+      expect(err).not.toMatch(/\n\s+at /); // no stack frames
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("freeze --dry-run without package.json also exits 2 (refuses before writing)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "rf-nopkg2-"));
+    try {
+      writeFileSync(join(dir, "CHANGELOG.md"), "## [Unreleased]\n", "utf8");
+      let err = "";
+      const rc = main(["freeze", "--dry-run"], () => {}, (s) => { err += s; }, dir);
+      expect(rc).toBe(2);
+      expect(err).toContain("releaseforge:");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses --dry-run on a path it cannot write (dry-run never bypasses hard errors)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "rf-nodry-"));
+    try {
+      let err = "";
+      const rc = main(["freeze", "--dry-run"], () => {}, (s) => { err += s; }, dir);
+      expect(rc).toBe(2);
+      expect(err).toContain("no CHANGELOG.md");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

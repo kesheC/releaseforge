@@ -38,4 +38,25 @@ describe("deriveRepoUrl", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("strips credential userinfo from https origins (CI checkout shape)", () => {
+    expect(deriveRepoUrl("x", fakeGit("https://ghp_abc123@github.com/acme/widgets.git"))).toBe("https://github.com/acme/widgets");
+    expect(deriveRepoUrl("x", fakeGit("https://x-access-token:ghp_full@github.com/acme/widgets.git"))).toBe("https://github.com/acme/widgets");
+    expect(deriveRepoUrl("x", fakeGit("https://user:pass@github.com/acme/widgets"))).toBe("https://github.com/acme/widgets");
+  });
+
+  it("warns when origin exists but is not a GitHub URL", () => {
+    const warnings: string[] = [];
+    const url = deriveRepoUrl("x", fakeGit("git@gitlab.com:acme/widgets.git"), (msg) => { warnings.push(msg); });
+    expect(url).toBe("https://github.com/kesheC/releaseforge");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("gitlab.com");
+    expect(warnings[0]).toContain("not a GitHub URL");
+  });
+
+  it("does not warn for a missing origin (documented fallback)", () => {
+    const warnings: string[] = [];
+    deriveRepoUrl("x", fakeGit(""), (msg) => { warnings.push(msg); });
+    expect(warnings).toHaveLength(0);
+  });
 });

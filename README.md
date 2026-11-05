@@ -114,10 +114,10 @@ Add `--dry-run` to any command to print the steps without writing anything.
 
 | command | effect | exit codes |
 | --- | --- | --- |
-| `releaseforge plan` | print the bump plan and draft release notes; writes nothing | 0 |
-| `releaseforge gates` | run the five gates against the working tree | 0 pass, 1 any gate failed |
-| `releaseforge freeze` | freeze `[Unreleased]`, rewrite compare links | 0, 2 no changelog |
-| `releaseforge release` | gates, then freeze, commit, tag, pack | 0, 1 gate failed, 2 usage |
+| `releaseforge plan` | print the bump plan and draft release notes; writes nothing | 0, 2 unusable tree (no package.json) |
+| `releaseforge gates` | run the five gates against the working tree | 0 pass, 1 any gate failed, 2 unusable tree |
+| `releaseforge freeze` | freeze `[Unreleased]`, rewrite compare links | 0, 2 no changelog / no package.json / already frozen for this version |
+| `releaseforge release` | gates, then freeze, commit, tag, pack | 0, 1 gate failed, 2 usage or a failed step (the failed step and completed steps are printed) |
 
 Streams: results and plans print to stdout; usage and command errors print to stderr. The exit code is the contract - CI scripts can rely on `releaseforge gates` failing without parsing output.
 
@@ -304,10 +304,10 @@ $ releaseforge release
 
 | 命令 | 作用 | 退出码 |
 | --- | --- | --- |
-| `releaseforge plan` | 打印升级计划与草拟发布说明；不写任何文件 | 0 |
-| `releaseforge gates` | 对工作树跑五道闸门 | 0 通过，1 任一失败 |
-| `releaseforge freeze` | 冻结 `[Unreleased]`，重写 compare 链接 | 0，2 无变更日志 |
-| `releaseforge release` | 闸门，然后冻结、提交、打标、打包 | 0，1 闸门失败，2 用法错误 |
+| `releaseforge plan` | 打印升级计划与草拟发布说明；不写任何文件 | 0，2 目录不可用（无 package.json） |
+| `releaseforge gates` | 对工作树跑五道闸门 | 0 通过，1 任一失败，2 目录不可用 |
+| `releaseforge freeze` | 冻结 `[Unreleased]`，重写 compare 链接 | 0，2 无变更日志 / 无 package.json / 该版本已冻结过 |
+| `releaseforge release` | 闸门，然后冻结、提交、打标、打包 | 0，1 闸门失败，2 用法错误或步骤失败（会打印失败步骤与已完成步骤） |
 
 流约定：结果与计划走 stdout；用法与命令错误走 stderr。退出码就是契约 —— CI 脚本可以只依赖 `releaseforge gates` 的失败，不必解析输出。
 

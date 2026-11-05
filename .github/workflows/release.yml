@@ -34,7 +34,18 @@ jobs:
         run: sha256sum releaseforge-*.tgz releaseforge.tgz > SHA256SUMS.txt
       - name: Extract release notes
         run: |
-          awk '/^## \[/{if (found) exit; found=1} found{print}' CHANGELOG.md > notes.md
+          # Anchor to THIS tag's section: the first "## [" heading used to be
+          # grabbed blindly, which shipped the [Unreleased] "nothing yet" body
+          # as the v0.1.1 notes when Unreleased still sat above the release.
+          TAG="${GITHUB_REF_NAME#v}"
+          awk -v v="$TAG" '
+            index($0, "## [" v "]") == 1 { found=1; print; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! head -n 1 notes.md | grep -q "## \[$TAG\]"; then
+            echo "CHANGELOG.md has no ## [$TAG] section; refusing to ship wrong notes" && exit 1
+          fi
           head -n 40 notes.md > body.md
       - name: Create GitHub Release
         env:

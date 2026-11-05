@@ -29,18 +29,29 @@ export function runPack(root: string, dest: string): PackResult {
   // first space-free token (or fails outright). JSON.stringify wraps the
   // path in double quotes and escapes embedded ones, which is exactly the
   // quoting the re-join needs; cmd metacharacters stay literal inside
-  // double quotes. POSIX keeps argv intact and stays unquoted.
+  // double quotes. The whole command is passed as ONE argument (DEP0190:
+  // execFileSync + args array + shell:true is deprecated on Node >= 22.14);
+  // with no args array the string IS the command line. POSIX keeps argv
+  // intact and stays unquoted.
   const shelled = platform() === "win32";
-  const packDest = shelled ? JSON.stringify(dest) : dest;
-  const out = execFileSync("npm", ["pack", "--pack-destination", packDest], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-    shell: shelled,
-    // npm notice lines go to stderr but pollute merged streams; a CLI whose
-    // stdout is a transcript should not emit decoration around the answer.
-    env: { ...process.env, npm_config_loglevel: "error" },
-  });
+  const out = shelled
+    ? execFileSync("npm pack --pack-destination " + JSON.stringify(dest), {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        shell: true,
+        // npm notice lines go to stderr but pollute merged streams; a CLI whose
+        // stdout is a transcript should not emit decoration around the answer.
+        env: { ...process.env, npm_config_loglevel: "error" },
+      })
+    : execFileSync("npm", ["pack", "--pack-destination", dest], {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        // npm notice lines go to stderr but pollute merged streams; a CLI whose
+        // stdout is a transcript should not emit decoration around the answer.
+        env: { ...process.env, npm_config_loglevel: "error" },
+      });
   // npm prints the tarball file name on the last non-empty line.
   const lines = out.split(/\r?\n/).filter((l) => l.trim() !== "");
   const name = lines[lines.length - 1]!.trim();

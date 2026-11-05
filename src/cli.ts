@@ -11,18 +11,36 @@ import { runPack } from "./pack.js";
 import { renderGates, renderGateSummary, renderPlan } from "./report.js";
 import { collectGateContext, planRelease, readPkgName, readPkgVersion } from "./workflow.js";
 
-/** Derive the GitHub repo URL from the origin remote; falls back to the releaseforge default. */
-export function deriveRepoUrl(root: string, git: (args: string[]) => string): string {
+/** Derive the GitHub repo URL from the origin remote; falls back to the
+ * releaseforge default. Credential-prefixed https origins are the standard
+ * CI-checkout shape (actions/checkout embeds a token as userinfo), so the
+ * userinfo is stripped before matching instead of failing it. When origin
+ * exists but is not a GitHub URL the fallback would point compare links at
+ * the wrong project, so a warning goes to the caller's channel. */
+export function deriveRepoUrl(
+  root: string,
+  git: (args: string[]) => string,
+  warn?: (msg: string) => void,
+): string {
   let url = "";
   try {
     url = git(["remote", "get-url", "origin"]).trim();
   } catch {
     url = "";
   }
-  const https = url.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/);
-  const ssh = url.match(/^git@github\.com:([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
-  const m = https ?? ssh;
-  return m ? "https://github.com/" + m[1] : "https://github.com/kesheC/releaseforge";
+  if (url !== "") {
+    // scheme://userinfo@rest -> https://rest  (token shapes: ghp_x@, user:pass@)
+    const stripped = url.replace(/^[a-z][\w+.-]*:\/\/[^/@]*@/, "https://");
+    const https = stripped.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/);
+    const ssh = url.match(/^git@github\.com:([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+    const m = https ?? ssh;
+    if (m) return "https://github.com/" + m[1];
+    warn?.(
+      "releaseforge: origin is not a GitHub URL (" + url +
+      "); compare links fall back to https://github.com/kesheC/releaseforge\n",
+    );
+  }
+  return "https://github.com/kesheC/releaseforge";
 }
 
 /**
@@ -65,15 +83,19 @@ interface Parsed {
   help: boolean;
   version: boolean;
   dryRun: boolean;
+  /** Flags present but not recognized; a typo like --dryrun must refuse,
+   * not silently fall through to real writes (it used to run a full release). */
+  unknown: string[];
 }
 
 function parseArgv(argv: string[]): Parsed {
-  const p: Parsed = { command: null, help: false, version: false, dryRun: false };
+  const p: Parsed = { command: null, help: false, version: false, dryRun: false, unknown: [] };
   for (const a of argv) {
     if (a === "-h" || a === "--help") p.help = true;
     else if (a === "-V" || a === "--version") p.version = true;
     else if (a === "--dry-run") p.dryRun = true;
-    else if (!a.startsWith("-") && p.command === null) p.command = a;
+    else if (a.startsWith("-")) p.unknown.push(a);
+    else if (p.command === null) p.command = a;
   }
   return p;
 }
@@ -139,6 +161,10 @@ export function main(
     stdout("releaseforge " + VERSION + "\n");
     return 0;
   }
+  if (p.unknown.length > 0) {
+    stderr("releaseforge: unknown option(s): " + p.unknown.join(" ") + "\n" + usage() + "\n");
+    return 2;
+  }
   const root = rootOverride ?? process.cwd();
   const git = systemGit(root);
 
@@ -170,16 +196,25 @@ export function main(
         stderr("releaseforge: no CHANGELOG.md in the current directory\n");
         return 2;
       }
-      const version = readPkgVersion(root);
-      const res = freezeUnreleased(text, version, localDate());
-      if (p.dryRun) {
-        stdout("dry run, would freeze [" + version + "] into CHANGELOG.md (skeleton: " + res.createdSkeleton + ")\n");
+      // Everything from the version read on can fail with a raw stack if the
+      // tree is not a package (no package.json) or the changelog cannot be
+      // frozen (already frozen for this version); both are one-line errors.
+      try {
+        const version = readPkgVersion(root);
+        const res = freezeUnreleased(text, version, localDate());
+        if (p.dryRun) {
+          stdout("dry run, would freeze [" + version + "] into CHANGELOG.md (skeleton: " + res.createdSkeleton + ")\n");
+          return 0;
+        }
+        const repoUrl = deriveRepoUrl(root, git, (msg) => stderr(msg));
+        const withLinks = upsertLinks(res.text, repoUrl, version, prevForLinks(git));
+        writeFileSync(changelogPath, withLinks, "utf8");
+        stdout("froze [" + version + "] into CHANGELOG.md (skeleton: " + res.createdSkeleton + ")\n");
         return 0;
+      } catch (err) {
+        stderr("releaseforge: " + childReason(err) + "\n");
+        return 2;
       }
-      const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(git));
-      writeFileSync(changelogPath, withLinks, "utf8");
-      stdout("froze [" + version + "] into CHANGELOG.md (skeleton: " + res.createdSkeleton + ")\n");
-      return 0;
     }
     case "release": {
       const ctx = gateContext(root, git, stderr);
@@ -188,27 +223,43 @@ export function main(
       stdout(renderGates(results) + "\n\n" + renderGateSummary(results) + "\n");
       if (results.some((r) => r.status === "fail")) return 1;
       const version = ctx.pkgVersion;
-      const res = freezeUnreleased(ctx.changelogBody ?? "", version, localDate());
+      // A mid-release failure must not surface as a raw stack after partial
+      // mutations: report the failed step, the steps already applied, and a
+      // recovery hint, then exit 2.
       const steps: string[] = [];
-      const run = (name: string, fn: () => void): void => {
-        if (p.dryRun) { steps.push(name); return; }
-        fn();
+      const run = (name: string, fn: () => void): boolean => {
+        if (p.dryRun) { steps.push(name); return true; }
+        try {
+          fn();
+        } catch (err) {
+          const applied = steps.length > 0 ? " (completed: " + steps.join(", ") + ")" : "";
+          stderr("releaseforge: step <" + name + "> failed: " + childReason(err) + applied + "\n");
+          if (name === "tag release" || applied !== "") {
+            stderr("releaseforge: the tag and changelog commit (if any) are local only; delete the tag with git tag -d v" + version + " and reset before retrying\n");
+          }
+          return false;
+        }
         steps.push(name);
+        return true;
       };
+      let res: ReturnType<typeof freezeUnreleased>;
+      let repoUrl = "";
+      if (!run("freeze changelog", () => {
+        res = freezeUnreleased(ctx.changelogBody ?? "", version, localDate());
+        repoUrl = deriveRepoUrl(root, git, (msg) => stderr(msg));
+      })) return 2;
       const changelogPath = join(root, "CHANGELOG.md");
-      run("freeze changelog", () => {
-        const withLinks = upsertLinks(res.text, deriveRepoUrl(root, git), version, prevForLinks(git));
+      if (!run("commit changelog", () => {
+        const withLinks = upsertLinks(res!.text, repoUrl, version, prevForLinks(git));
         writeFileSync(changelogPath, withLinks, "utf8");
-      });
-      run("commit changelog", () => {
         git(["add", "CHANGELOG.md"]);
         git(["commit", "-m", "chore(release): v" + version]);
-      });
-      run("tag release", () => {
+      })) return 2;
+      if (!run("tag release", () => {
         git(["tag", "v" + version]);
-      });
+      })) return 2;
       let tarball = "";
-      run("npm pack", () => {
+      if (!run("npm pack", () => {
         mkdirSync(join(root, "release"), { recursive: true });
         // The tarball is <pkg.name>-<version>.tgz: derive the stale-file
         // pre-clean from the package name instead of a hardcoded prefix, or
@@ -216,7 +267,7 @@ export function main(
         rmSync(join(root, "release", readPkgName(root) + "-" + version + ".tgz"), { force: true });
         const packed = runPack(root, join(root, "release"));
         tarball = packed.tarball;
-      });
+      })) return 2;
       const tail = tarball === "" ? "" : " (" + tarball + ")";
       stdout((p.dryRun ? "dry run, would do: " : "done: ") + steps.join(" -> ") + tail + "\n");
       return 0;

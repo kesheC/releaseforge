@@ -11,20 +11,25 @@ import type { ChangelogSection } from "./types.js";
 const HEADING_RE = /^##\s+\[([^\]]+)\]\s*(?:-\s*(.*))?$/;
 const LINK_RE = /^\[(Unreleased|\d+\.\d+\.\d+)\]:\s*(\S+)\s*$/;
 
-/** Parse every "## [title]" section. Content before the first one is ignored. */
+/** Parse every "## [title]" section. Content before the first one is ignored.
+ * Heading lines inside fenced code blocks (``` or ~~~) are prose, not
+ * sections: freeze once froze a fenced example instead of a real section. */
 export function parseSections(text: string): ChangelogSection[] {
   const lines = text.split(/\r?\n/);
   const sections: ChangelogSection[] = [];
   let current: ChangelogSection | null = null;
+  let fence = false;
   for (let i = 0; i < lines.length; i++) {
-    const m = HEADING_RE.exec(lines[i] ?? "");
+    const line = lines[i] ?? "";
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    const m = fence ? null : HEADING_RE.exec(line);
     if (m && m[1] !== undefined) {
       const section: ChangelogSection = { title: m[1], body: [], line: i + 1 };
       current = section;
       sections.push(section);
       continue;
     }
-    if (current) current.body.push(lines[i] ?? "");
+    if (current) current.body.push(line);
   }
   // Trim trailing empty lines of each section: they are separators, not content.
   for (const s of sections) {
@@ -62,6 +67,15 @@ export function freezeUnreleased(text: string, version: string, date: string): F
   const sections = parseSections(text);
   const unreleased = sections.find((s) => s.title === "Unreleased");
   const heading = "## [" + version + "] - " + date;
+
+  // Refuse a freeze that would produce two "## [version]" headings: freezing
+  // twice (or re-freezing an already-released version) used to duplicate the
+  // section with exit 0 and silently corrupt the release notes source.
+  if (sections.some((s) => s.title === version)) {
+    throw new Error(
+      "CHANGELOG.md already has a [" + version + "] section; bump the version before freezing again",
+    );
+  }
 
   if (!unreleased) {
     // First release: insert right after the header block, before the first

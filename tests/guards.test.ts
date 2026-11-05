@@ -78,6 +78,16 @@ describe("release workflow", () => {
     expect(gate).toBeGreaterThan(-1);
     expect(firstGh).toBeGreaterThan(gate);
   });
+
+  it("anchors release notes to the tag version and refuses missing sections", () => {
+    // The notes extraction once grabbed the FIRST '## [' heading, which was
+    // [Unreleased] - the v0.1.1 release shipped 'nothing yet' as its notes.
+    const yml = read(".github/workflows/release.yml");
+    const extract = yml.slice(yml.indexOf("Extract release notes"), yml.indexOf("Create GitHub Release"));
+    expect(extract).toContain('awk -v v="$TAG"');
+    expect(extract).toContain('grep -q "## \\[$TAG\\]"');
+    expect(extract).toContain("exit 1");
+  });
 });
 
 describe("docs contract", () => {

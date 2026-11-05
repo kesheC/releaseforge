@@ -1,3 +1,4 @@
+import { findSection } from "./changelog.js";
 import { GATE_LABELS } from "./types.js";
 import type { GateContext, GateResult } from "./types.js";
 
@@ -30,7 +31,9 @@ export function runGates(ctx: GateContext): GateResult[] {
   // 2. changelog section
   if (ctx.changelogBody === null) {
     results.push(fail("changelog-section", "CHANGELOG.md not found or unreadable"));
-  } else if (/^##\s+\[Unreleased\]/m.test(ctx.changelogBody)) {
+  } else if (findSection(ctx.changelogBody, "Unreleased") !== null) {
+    // Same heading rule the freezer uses (fence-aware): a fenced example
+    // "## [Unreleased]" line inside a code block must not pass the gate.
     results.push(pass("changelog-section"));
   } else {
     results.push(fail("changelog-section", "no ## [Unreleased] section to freeze; add one first"));

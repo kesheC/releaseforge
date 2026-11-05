@@ -135,5 +135,81 @@ describe("runGates", () => {
     expect(gate?.detail).toContain("bump the version first");
     expect(gate?.detail).toContain("git tag -d v0.2.0");
   });
+
+  it("ignores a fenced ## [Unreleased] line when deciding changelog-section", () => {
+    // The example line lives inside a code fence: prose, not a section.
+    const fenced = [
+      "# Changelog",
+      "",
+      "Example:",
+      "```",
+      "## [Unreleased]",
+      "- not a real section",
+      "```",
+      "",
+    ].join("\n");
+    const r = runGates({ ...base, changelogBody: fenced });
+    expect(r.find((g) => g.id === "changelog-section")?.status).toBe("fail");
+  });
+});
+
+describe("fence-aware parseSections", () => {
+  it("does not treat headings inside code fences as sections", () => {
+    const doc = [
+      "# Changelog",
+      "",
+      "```md",
+      "## [Unreleased]",
+      "- example only",
+      "```",
+      "",
+      "## [0.1.0] - 2025-01-01",
+      "",
+      "### Added",
+      "- initial",
+    ].join("\n");
+    const s = parseSections(doc);
+    expect(s.map((x) => x.title)).toEqual(["0.1.0"]);
+  });
+
+  it("resumes section parsing after the fence closes", () => {
+    const doc = [
+      "## [Unreleased]",
+      "",
+      "```",
+      "## [0.9.9] - fake-in-fence",
+      "```",
+      "- real body line",
+    ].join("\n");
+    const s = parseSections(doc);
+    expect(s).toHaveLength(1);
+    expect(s[0]?.title).toBe("Unreleased");
+    expect(s[0]?.body).toEqual(["", "```", "## [0.9.9] - fake-in-fence", "```", "- real body line"]);
+  });
+});
+
+describe("double-freeze refusal", () => {
+  it("refuses to freeze when the version section already exists", () => {
+    const once = freezeUnreleased(HEADED, "0.2.0", "2025-06-01");
+    // Second freeze at the same version: used to duplicate the heading with exit 0.
+    expect(() => freezeUnreleased(once.text, "0.2.0", "2025-06-02")).toThrow(/already has a \[0\.2\.0\] section/);
+  });
+
+  it("refuses when Unreleased is renamed onto an existing version heading", () => {
+    // HEADED already contains [0.1.0]: freezing as 0.1.0 must refuse.
+    expect(() => freezeUnreleased(HEADED, "0.1.0", "2025-06-01")).toThrow(/already has a \[0\.1\.0\] section/);
+  });
+
+  it("still allows a fresh version after a previous freeze", () => {
+    const once = freezeUnreleased(HEADED, "0.2.0", "2025-06-01");
+    // A later cycle: a fresh [Unreleased] sits above the frozen 0.2.0.
+    const withFresh = once.text.replace(
+      "# Changelog\n",
+      "# Changelog\n\n## [Unreleased]\n\n### Added\n- next thing\n",
+    );
+    const again = freezeUnreleased(withFresh, "0.3.0", "2025-07-01");
+    expect(again.frozeUnreleased).toBe(true);
+    expect((again.text.match(/## \[0\.3\.0\]/g) ?? []).length).toBe(1);
+  });
 });
 
